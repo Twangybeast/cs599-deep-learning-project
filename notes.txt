@@ -1,0 +1,13 @@
+pip install pgn_parser
+
+zstd -T 0 -d -c lichess_db_standard_rated_2018-02.pgn.zst | head -n 100
+
+
+Time controls distribution out of 10,000
+Must be within 100 ELO
+[('180+0', 1874), ('300+0', 1851), ('60+0', 1812), ('600+0', 1066), ('30+0', 649), ('120+1', 464)
+We can do 300+0 only
+mean about 1600, std about 300
+Roughly 2/13 are standard
+
+ValueError on load fail
