@@ -26,3 +26,6 @@ TODO run these
 ./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-06.pgn.zst worker06 &
 ./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-07.pgn.zst worker07 &
 ./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-08.pgn.zst worker08 &
+
+sudo pip3 install numpy chess tqdm wandb flask flask_cors pyopenssl
+sudo pip3 install torch --extra-index-url https://download.pytorch.org/whl/cpu

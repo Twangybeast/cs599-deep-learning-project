@@ -202,6 +202,7 @@ def loss_func(pred, actual):
 def train(model, device, optimizer, train_loader, epoch, log_interval):
     model.train()
     losses = []
+    maes = []
     for batch_idx, (plane_tensor, elo_tensor) in enumerate(tqdm(train_loader)):
         plane_tensor = plane_tensor.to(device)
         elo_tensor = elo_tensor.to(device)
@@ -210,13 +211,14 @@ def train(model, device, optimizer, train_loader, epoch, log_interval):
         output = model(plane_tensor)
         loss = loss_func(output, elo_tensor)
         losses.append(loss.item())
+        maes.append(torch.abs(output - elo_tensor).mean().item())
         loss.backward()
         optimizer.step()
         if (batch_idx + 1) % log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(plane_tensor), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
-    return np.mean(losses)
+    return np.mean(losses), np.mean(maes)
 
 
 def test(model, device, test_loader):
@@ -253,21 +255,20 @@ def main():
     USE_CUDA = True
     BATCH_SIZE = 128
     TEST_BATCH_SIZE = 128
-    LEARNING_RATE = 0.002
+    LEARNING_RATE = 0.0002
     WEIGHT_DECAY = 0.0005
     PRINT_INTERVAL = 100
-    EPOCHS = 20
+    EPOCHS = 50
     # BASE_PATH = "....."
     MODEL_PATH = None
-    FILTER_SIZE = 256
-    NUM_LAYERS = 20
+    FILTER_SIZE = 512
+    NUM_LAYERS = 30
     MAX_GAME_LENGTH = 12
     HIDDEN_FILTER_SIZE = 32
     FINAL_HIDDEN_SIZE = 128
-    MODEL_PREFIX = "v4_"
+    MODEL_PREFIX = "v5_"
     if WANDB:
-        wandb.init(project="deep-learning-final-project", entity="uw-d0")
-        wandb.config = {
+        config = {
             "batch_size": BATCH_SIZE,
             "learning_rate": LEARNING_RATE,
             "weight_decay": WEIGHT_DECAY,
@@ -277,9 +278,10 @@ def main():
             "max_game_length": MAX_GAME_LENGTH,
             "hidden_filter_size": HIDDEN_FILTER_SIZE,
             "final_hidden_size": FINAL_HIDDEN_SIZE,
-            "version": "v4",
+            "version": "v5",
             "model_prefix": MODEL_PREFIX
         }
+        wandb.init(project="deep-learning-final-project", entity="uw-d0", config=config)
 
     TRAIN_FILENAMES = ["worker01.npy", "worker02.npy", "worker03.npy", "worker04.npy", "worker05.npy"]
     # TRAIN_FILENAMES = ["worker01.npy"]
@@ -312,7 +314,7 @@ def main():
                                               shuffle=False, **kwargs)
 
     # model = ChessNet(FILTER_SIZE, FILTER_SIZE, ChessCNN(FILTER_SIZE, 10)).to(device)
-    model = ChessNet(FILTER_SIZE, NUM_LAYERS, MAX_GAME_LENGTH, hidden_filter_size=hidden_filter_size, hidden_size=FINAL_HIDDEN_SIZE).to(device)
+    model = ChessNet(FILTER_SIZE, NUM_LAYERS, MAX_GAME_LENGTH, hidden_filter_size=HIDDEN_FILTER_SIZE, hidden_size=FINAL_HIDDEN_SIZE).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
     train_losses = []
@@ -333,7 +335,7 @@ def main():
     for epoch in range(start_epoch, EPOCHS + 1):
         print(f"Starting epoch {epoch}")
         data_train.reset()
-        train_loss = train(model, device, optimizer, train_loader, epoch, PRINT_INTERVAL)
+        train_loss, train_mae = train(model, device, optimizer, train_loader, epoch, PRINT_INTERVAL)
         test_loss, test_mae = test(model, device, test_loader)
 
         train_losses.append((epoch, train_loss))
@@ -348,6 +350,7 @@ def main():
             wandb.log({
                 "epoch": epoch,
                 "train_loss": train_loss,
+                "train_mae": train_mae,
                 "test_loss": test_loss,
                 "test_mae": test_mae
                 })
@@ -359,6 +362,7 @@ def main():
                 "optimizer": optimizer.state_dict(),
                 "epoch": epoch,
                 "train_loss": train_loss,
+                "train_mae": train_mae,
                 "test_loss": test_loss,
                 "test_mae": test_mae,
                 "best_test_mae": best_test_mae,
@@ -369,6 +373,6 @@ def main():
             if basename == f"{epoch}.pt" or basename == f"{best_epoch}.pt":
                 break
             os.remove(checkpoint_file)
-main()
-# if __name__ == '__main__':
-#     main()
+# main()
+if __name__ == '__main__':
+    main()
