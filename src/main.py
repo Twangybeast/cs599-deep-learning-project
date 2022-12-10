@@ -1,5 +1,6 @@
 import argparse
 import glob
+import os
 
 import numpy as np
 # import torch
@@ -33,7 +34,7 @@ def game_to_tensor(boards, scores, game_start_move, max_game_length):
     return boards_tensor, scores_tensor, mask
 
 class GamesTrainDataset(torch.utils.data.Dataset):
-    def __init__(self, data_files, epoch_size, max_game_length=20, min_game_length=0, num_buckets=30, bucket_width=100, sampling_power=0.5):
+    def __init__(self, data_files, epoch_size, max_game_length=20, min_game_length=0, num_buckets=30, bucket_width=100, sampling_power=0.5, seed=None):
         self.elo_buckets = [[] for _ in range(num_buckets)]
 
         for filename in data_files:
@@ -50,14 +51,15 @@ class GamesTrainDataset(torch.utils.data.Dataset):
         self.max_game_length = max_game_length
 
         self.datapoints = None
+        self.rng = np.random.default_rng(seed)
         self.reset()
     
     def reset(self):
         self.datapoints = []
-        for i, bucket in enumerate(np.random.choice(len(self.elo_buckets), size=self.epoch_size, p=self.bucket_weights))
-            game_idx = np.random.choice(len(self.elo_buckets[bucket]))
+        for i, bucket in enumerate(self.rng.choice(len(self.elo_buckets), size=self.epoch_size, p=self.bucket_weights))
+            game_idx = self.rng.choice(len(self.elo_buckets[bucket]))
             game_length = len(self.elo_buckets[bucket][game_idx][1])
-            game_start_move = 0 if game_length <= self.max_game_length else np.random.choice(game_length - self.max_game_length + 1)
+            game_start_move = 0 if game_length <= self.max_game_length else self.rng.choice(game_length - self.max_game_length + 1)
             self.datapoints.append((bucket, game_idx, game_start_move))
     
     def __len__(self):
@@ -77,7 +79,7 @@ class GamesTrainDataset(torch.utils.data.Dataset):
 
 
 class GamesTestDataset(torch.utils.data.Dataset):
-    def __init__(self, data_files, max_game_length, min_game_length=None):
+    def __init__(self, data_files, max_game_length, min_game_length=None, max_datapoints=None):
         if min_game_length is None:
             min_game_length = max_game_length
         self.games = []
@@ -87,6 +89,8 @@ class GamesTestDataset(torch.utils.data.Dataset):
                     continue
                 bucket = min(num_buckets - 1, max(0, float(elo) // bucket_width))
                 self.games.append((boards, scores, elo))
+        if max_datapoints is not None:
+            self.games = self.games[:max_datapoints]
         self.max_game_length = max_game_length
 
         rng = np.random.default_rng(1235)
@@ -217,14 +221,6 @@ def test(model, device, test_loader):
             pred_elos = output[:, -1, 0]
             absolute_error = torch.sum(torch.abs(pred_elos - elo_tensor)).item()
 
-
-
-
-            pred = output.max(-1)[1]
-            correct_mask = pred.eq(label.view_as(pred))
-            num_correct = correct_mask.sum().item()
-            correct += num_correct
-
     test_loss /= total
     absolute_error /= total
 
@@ -242,6 +238,50 @@ def main():
     # for filename in glob.glob("data/*.npy"):
     #     for game in read_file_games(filename):
     #         pass
+    USE_CUDA = True
+    BATCH_SIZE = 128
+    LEARNING_RATE = 0.002
+    WEIGHT_DECAY = 0.0005
+    PRINT_INTERVAL = 10
+    EPOCHS = 20
+    MODEL_PATH = "runs/"
+
+    data_train = GamesTrainDataset(["data/worker01.npy", "data/worker02.npy", "data/worker03.npy", "data/worker04.npy", "data/worker05.npy"],
+                    epoch_size=20000, max_game_length=20, min_game_length=5)
+    data_test = GamesTrainDataset(["data/worker07.npy"], epoch_size=10000, max_game_length=20, min_game_length=20, seed=4909)
+    # data_eval = GamesTestDataset(["data/worker07.npy"], 20, max_datapoints=10000)
+
+    use_cuda = USE_CUDA and torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+    print('Using device', device)
+    import multiprocessing
+    num_workers = multiprocessing.cpu_count()
+    print('num workers:', num_workers)
+
+    kwargs = {'num_workers': num_workers,
+              'pin_memory': True} if use_cuda else {}
+
+    train_loader = torch.utils.data.DataLoader(data_train, batch_size=BATCH_SIZE,
+                                               shuffle=False, **kwargs)
+    test_loader = torch.utils.data.DataLoader(data_test, batch_size=TEST_BATCH_SIZE,
+                                              shuffle=False, **kwargs)
+
+    model = ChessNet(64, 8).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+
+    train_losses = []
+    test_losses = []
+    test_maes = []
+    for epoch in range(1, EPOCHS + 1):
+        train_loss = train(model, device, optimizer, train_loader, epoch, PRINT_INTERVAL)
+        test_loss, test_mae = test(model, device, test_loader)
+
+        train_losses.append((epoch, train_loss))
+        test_losses.append((epoch, test_loss))
+        test_maes.append((epoch, test_mae))
+        # pt_util.write_log(LOG_PATH, (train_losses, test_losses, test_accuracies))
+        # model.save_best_model(test_accuracy, DATA_PATH + 'checkpoints/%03d.pt' % epoch)
+        torch.save(model.state_dict(), os.path.join(MODEL_PATH, f"checkpoints/{epoch}.pt"))
 
 if __name__ == '__main__':
     main()

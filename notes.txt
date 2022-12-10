@@ -10,6 +10,8 @@ We can do 300+0 only
 mean about 1600, std about 300
 Roughly 2/13 are standard
 
+Switch to flat CNN, no LSTM
+
 ValueError on load fail
 
 ./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-01.pgn.zst worker01 &
