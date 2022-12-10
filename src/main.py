@@ -3,8 +3,12 @@ import glob
 import os
 
 import numpy as np
-# import torch
-# import torch.nn as nn
+from tqdm import tqdm
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
 def read_file_games(filename):
     with open(filename, "rb") as file:
@@ -29,7 +33,7 @@ def game_to_tensor(boards, scores, game_start_move, max_game_length):
     boards_tensor[:num_moves] = torch.tensor(boards, dtype=torch.long)
     scores_tensor[:num_moves] = torch.tensor(scores, dtype=torch.float)
 
-    mask = torch.zeros(self.max_game_length, dtype=torch.float)
+    mask = torch.zeros(max_game_length, dtype=torch.float)
     mask[:num_moves] = 1
     return boards_tensor, scores_tensor, mask
 
@@ -38,15 +42,19 @@ class GamesTrainDataset(torch.utils.data.Dataset):
         self.elo_buckets = [[] for _ in range(num_buckets)]
 
         for filename in data_files:
+            print(f"Loading data from file [{filename}]...")
             for boards, scores, elo in read_file_games(filename):
                 if len(boards) < min_game_length:
                     continue
-                bucket = min(num_buckets - 1, max(0, float(elo) // bucket_width))
+                bucket = min(num_buckets - 1, max(0, int(float(elo) // bucket_width)))
                 self.elo_buckets[bucket].append((boards, scores, elo))
         
         # 0 sampling power is evenly from each bucket, 1 is normal sampling without buckets
         self.bucket_weights = np.array([len(elo_bucket) ** sampling_power for elo_bucket in self.elo_buckets])
         self.bucket_weights /= np.sum(self.bucket_weights)
+
+        print("Bucket sizes: ", [len(elo_bucket) for elo_bucket in self.elo_buckets])
+        print("Bucket weights: ", self.bucket_weights)
         self.epoch_size = epoch_size
         self.max_game_length = max_game_length
 
@@ -56,7 +64,7 @@ class GamesTrainDataset(torch.utils.data.Dataset):
     
     def reset(self):
         self.datapoints = []
-        for i, bucket in enumerate(self.rng.choice(len(self.elo_buckets), size=self.epoch_size, p=self.bucket_weights))
+        for i, bucket in enumerate(self.rng.choice(len(self.elo_buckets), size=self.epoch_size, p=self.bucket_weights)):
             game_idx = self.rng.choice(len(self.elo_buckets[bucket]))
             game_length = len(self.elo_buckets[bucket][game_idx][1])
             game_start_move = 0 if game_length <= self.max_game_length else self.rng.choice(game_length - self.max_game_length + 1)
@@ -65,7 +73,7 @@ class GamesTrainDataset(torch.utils.data.Dataset):
     def __len__(self):
         return self.epoch_size
     
-    def __getitem__(idx):
+    def __getitem__(self, idx):
         bucket, game_idx, game_start_move = self.datapoints[idx]
         boards, scores, elo = self.elo_buckets[bucket][game_idx]
 
@@ -84,10 +92,10 @@ class GamesTestDataset(torch.utils.data.Dataset):
             min_game_length = max_game_length
         self.games = []
         for filename in data_files:
+            print(f"Loading data from file [{filename}]...")
             for boards, scores, elo in read_file_games(filename):
                 if len(boards) < min_game_length:
                     continue
-                bucket = min(num_buckets - 1, max(0, float(elo) // bucket_width))
                 self.games.append((boards, scores, elo))
         if max_datapoints is not None:
             self.games = self.games[:max_datapoints]
@@ -105,11 +113,12 @@ class GamesTestDataset(torch.utils.data.Dataset):
     
     def __getitem__(self, idx):
         boards, scores, elo = self.games[idx]
+        game_start = self.game_starts[idx]
         boards_tensor, scores_tensor, mask = game_to_tensor(boards, scores, game_start_move, self.max_game_length)
         return boards_tensor, scores_tensor, torch.tensor(elo, dtype=torch.float), mask  
 
 class ChessNet(nn.Module):
-    def __init__(self, in_filter_size, cnn):
+    def __init__(self, in_filter_size, out_filter_size, cnn):
         super(ChessNet, self).__init__()
         self.in_filter_size = in_filter_size
         self.out_filter_size = out_filter_size
@@ -133,8 +142,7 @@ class ChessNet(nn.Module):
         x = x.mean(dim=(-1, -2))
         # B x L x OUT_FILTER_SIZE
 
-        
-        x = torch.cat([x, scores_tensor.view(-1, 1, 1).expand(-1, x.size()[1], -1)])
+        x = torch.cat([x, scores_tensor.unsqueeze(-1)], dim=-1)
         # B x L x (OUT_FILTER_SIZE + 1)
         x, hidden = self.rnn(x)
 
@@ -164,21 +172,22 @@ class ChessResModule(nn.Module):
 
 class ChessCNN(nn.Module):
     def __init__(self, filter_size, num_layers):
-        self.net = nn.Sequential([ChessResModule(filter_size) for i in range(num_layers)])
+        super(ChessCNN, self).__init__()
+        self.net = nn.Sequential(*[ChessResModule(filter_size) for i in range(num_layers)])
     
     def forward(self, x):
         return self.net(x)
 
 def loss_func(pred, actual, mask):
     mask = mask.unsqueeze(-1)
-    actual = actual.unsqueeze(-1)
+    actual = actual.unsqueeze(-1).unsqueeze(-1).expand(-1, pred.size()[1], -1)
     return nn.MSELoss(reduction='sum')(pred * mask / 300, actual * mask / 300) / torch.sum(mask)
 
 
 def train(model, device, optimizer, train_loader, epoch, log_interval):
     model.train()
     losses = []
-    for batch_idx, (boards_tensor, scores_tensor, elo_tensor, mask) in enumerate(tqdm.tqdm(train_loader)):
+    for batch_idx, (boards_tensor, scores_tensor, elo_tensor, mask) in enumerate(tqdm(train_loader)):
         boards_tensor = boards_tensor.to(device)
         scores_tensor = scores_tensor.to(device)
         elo_tensor = elo_tensor.to(device)
@@ -192,7 +201,7 @@ def train(model, device, optimizer, train_loader, epoch, log_interval):
         optimizer.step()
         if (batch_idx + 1) % log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
+                epoch, batch_idx * len(boards_tensor), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
     return np.mean(losses)
 
@@ -230,25 +239,24 @@ def test(model, device, test_loader):
 
         
 def main():
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("files", nargs='+')
-    # args = parser.parse_args()
-
-
-    # for filename in glob.glob("data/*.npy"):
-    #     for game in read_file_games(filename):
-    #         pass
     USE_CUDA = True
     BATCH_SIZE = 128
+    TEST_BATCH_SIZE = 128
     LEARNING_RATE = 0.002
     WEIGHT_DECAY = 0.0005
     PRINT_INTERVAL = 10
     EPOCHS = 20
-    MODEL_PATH = "runs/"
+    # BASE_PATH = "....."
+    MODEL_PATH = os.path.join(BASE_PATH, "runs/")
 
-    data_train = GamesTrainDataset(["data/worker01.npy", "data/worker02.npy", "data/worker03.npy", "data/worker04.npy", "data/worker05.npy"],
+    TRAIN_FILENAMES = ["worker01.npy", "worker02.npy", "worker03.npy", "worker04.npy", "worker05.npy"]
+    # TRAIN_FILENAMES = ["worker01.npy"]
+    TEST_FILENAMES = ["worker07.npy"]
+    
+    data_train = GamesTrainDataset([os.path.join(BASE_PATH, filename) for filename in TRAIN_FILENAMES],
                     epoch_size=20000, max_game_length=20, min_game_length=5)
-    data_test = GamesTrainDataset(["data/worker07.npy"], epoch_size=10000, max_game_length=20, min_game_length=20, seed=4909)
+    # data_test = data_train
+    data_test = GamesTrainDataset([os.path.join(BASE_PATH, filename) for filename in TEST_FILENAMES], epoch_size=10000, max_game_length=20, min_game_length=20, seed=4909)
     # data_eval = GamesTestDataset(["data/worker07.npy"], 20, max_datapoints=10000)
 
     use_cuda = USE_CUDA and torch.cuda.is_available()
@@ -266,13 +274,14 @@ def main():
     test_loader = torch.utils.data.DataLoader(data_test, batch_size=TEST_BATCH_SIZE,
                                               shuffle=False, **kwargs)
 
-    model = ChessNet(64, 8).to(device)
+    model = ChessNet(64, 64, ChessCNN(64, 8)).to(device)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
     train_losses = []
     test_losses = []
     test_maes = []
     for epoch in range(1, EPOCHS + 1):
+        data_train.reset()
         train_loss = train(model, device, optimizer, train_loader, epoch, PRINT_INTERVAL)
         test_loss, test_mae = test(model, device, test_loader)
 
@@ -282,6 +291,6 @@ def main():
         # pt_util.write_log(LOG_PATH, (train_losses, test_losses, test_accuracies))
         # model.save_best_model(test_accuracy, DATA_PATH + 'checkpoints/%03d.pt' % epoch)
         torch.save(model.state_dict(), os.path.join(MODEL_PATH, f"checkpoints/{epoch}.pt"))
-
-if __name__ == '__main__':
-    main()
+main()
+# if __name__ == '__main__':
+#     main()
