@@ -1,0 +1,1 @@
+wget -O - -o /dev/null $1 | zstd -d -c - | python src/prepare_games.py --out data/$2.npy > logs/$2_log.txt 2>&1

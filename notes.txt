@@ -11,3 +11,14 @@ mean about 1600, std about 300
 Roughly 2/13 are standard
 
 ValueError on load fail
+
+./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-01.pgn.zst worker01 &
+./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-02.pgn.zst worker02 &
+./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-03.pgn.zst worker03 &
+./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-04.pgn.zst worker04 &
+./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-05.pgn.zst worker05 &
+
+TODO run these
+./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-06.pgn.zst worker06 &
+./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-07.pgn.zst worker07 &
+./get_data.sh https://database.lichess.org/standard/lichess_db_standard_rated_2018-08.pgn.zst worker08 &

@@ -1,3 +1,4 @@
+import argparse
 import sys
 
 import numpy as np
@@ -16,7 +17,7 @@ def board_to_npy(board):
     return result
 
 def score_to_float(score):
-    res = score.relative.score(mate_score=100000) / 100
+    res = score.white().score(mate_score=100000) / 100
     return max(min(res, 10), -10)
 
 def get_game_info(game):
@@ -28,12 +29,18 @@ def get_game_info(game):
     return np.array(boards), np.array(scores), np.array((float(game.headers['WhiteElo']) + float(game.headers['BlackElo'])) / 2)
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out")
+    parser.add_argument("--count", type=int, default=20000)
+    args = parser.parse_args()
+
     games = []
     elos = []
     time_controls = {}
     events = set()
+    
 
-    with tqdm.tqdm() as pbar:
+    with tqdm.tqdm() as pbar, open(args.out, 'wb') as out_file:
         game = None
         count = 0
         eval_count = 0
@@ -42,18 +49,23 @@ def main():
             if game is None:
                 break
             pbar.update(1)
-            count += 1
             # Filters
             if any((node.eval() is None for node in game.mainline())):
                 continue
             if game.headers["TimeControl"] != "300+0":
                 continue
+            count += 1
+            pbar.set_postfix({"count": count})
 
-            
-            elos.append([float(game.headers['WhiteElo']), float(game.headers['BlackElo'])])
-            for node in game.mainline():
-                print(board_to_npy(node.board()))
-            break
+            boards, scores, elo = get_game_info(game)
+            np.save(out_file, boards)
+            np.save(out_file, scores)
+            np.save(out_file, elo)
+            out_file.flush()
+            # elos.append([float(game.headers['WhiteElo']), float(game.headers['BlackElo'])])
+            # for node in game.mainline():
+            #     print(board_to_npy(node.board()))
+            # break
 
 
             # Process game
@@ -65,7 +77,7 @@ def main():
             # tc = game.headers['TimeControl']
             # time_controls[tc] = time_controls.get(tc, 0) + 1
             # elos.append([float(game.headers['WhiteElo']), float(game.headers['BlackElo'])])
-            if count >= 10000:
+            if count >= args.count:
                 break
             # print(game)
     # print(games)
