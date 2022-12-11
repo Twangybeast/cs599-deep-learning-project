@@ -14,11 +14,11 @@ from prepare_games import get_game_info
 
 # lol run this in the src folder
 FILTER_SIZE = 512
-NUM_LAYERS = 20
+NUM_LAYERS = 30
 MAX_GAME_LENGTH = 12
 HIDDEN_FILTER_SIZE = 32
 FINAL_HIDDEN_SIZE = 128
-MODEL_PATH = "../v4_25.pt"
+MODEL_PATH = "../v5_47.pt"
 
 print("Loading model...")
 state_dict = torch.load(MODEL_PATH, map_location=torch.device('cpu'))
