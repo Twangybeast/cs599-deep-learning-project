@@ -84,7 +84,7 @@ We also tried inputting some custom games into our model and it seemed to predic
 ```
 
 ## Results
-Overall, it seems our model does pretty well. The MAE on test data was 243 which is significantly better than random guessing, which is closer to 400. 
+Overall, it seems our model does pretty well. The MAE on test data was 243 which is significantly better than random guessing, which is closer to 400. Also, chess professionals GothamChess and Hikaru had an MAE of 233 and 443 respectively, so our model does comparable to or better than chess professionals.
 
 One major limitation of our model was that we didn’t have enough datapoints at the tail of the distribution, which makes our model much worse at predicting really bad players or really good players. Unfortunately, this is partly due to our compute limits, since the parsing speed of PGNs was quite slow, we couldn’t parse enough datapoints to get the extreme cases since the dataset isn’t nicely grouped by Elo ratings. So even though the data technically existed, we didn’t have enough compute to actually get it all in the format required for the model.
 
