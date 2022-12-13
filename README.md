@@ -2,6 +2,16 @@
 Chess is perhaps the most popular studied game in the field of artificial intelligence. The current state-of-the-art chess engines use variants of minimax combined with neural networks to evaluate positions. Although much work has been done in evaluating chess positions, i.e. who is winning and by how much, much less work has been done in evaluating the strength of the players from the chess position. In our work, we take a chess position and the last 6 moves played and estimate the average strength of the two players, measured by Lichess’s Elo system.
 We use publicly available games that real people played on Lichess from 2018, and input game states into our convolutional neural network model. We used held out data to test our model based on the mean absolute error of the guessed and actual average Elo rating. We include a demo with our model predicting the Elo rating from a chess PGN string.
 
+
+## Video Summary
+https://youtu.be/o_t1yP3T0YU
+
+## Demo
+To use our model, all you need is a PGN string of a chess game. The PGN format is very common, and we’re pretty sure any online chess website has a way to export games as PGN strings. Also, you can create a PGN using various online board editors. We have a demo in the link below, which also includes additional details on how to make a PGN.
+
+https://colab.research.google.com/drive/1bFW1oKJjLClVR2tP_cs4-8G_e-Zdvsze#scrollTo=bivAqCA3wOnZ 
+
+
 ## Problem statement
 Chess is an incredibly famous game, even outside specialized communities. Most people have doubtlessly watched or played a game of chess. When stumbling upon a pair of people playing chess and observing the game for a few moves, it can be quite hard to estimate how good the players are, especially if one doesn’t know much about chess. Even when using a computer engine to evaluate who’s winning, large swings in evaluation scores could be due to inhumanly complicated tactics and sacrifices, and simply the fact that a player is winning doesn’t indicate how good the total strength of the players is. 
 
@@ -79,11 +89,3 @@ Overall, it seems our model does pretty well. The MAE on test data was 243 which
 One major limitation of our model was that we didn’t have enough datapoints at the tail of the distribution, which makes our model much worse at predicting really bad players or really good players. Unfortunately, this is partly due to our compute limits, since the parsing speed of PGNs was quite slow, we couldn’t parse enough datapoints to get the extreme cases since the dataset isn’t nicely grouped by Elo ratings. So even though the data technically existed, we didn’t have enough compute to actually get it all in the format required for the model.
 
 Another limitation of the model was that it seems like it didn’t fully converge on the training data. We didn’t train it for longer due to the compute limits of using colab. However empirically, the test MAE was going down much slower, so training for even longer would likely have negligible benefits.
-
-### Demo
-To use our model, all you need is a PGN string of a chess game. The PGN format is very common, and we’re pretty sure any online chess website has a way to export games as PGN strings. Also, you can create a PGN using various online board editors. We have a demo in the link below, which also includes additional details on how to make a PGN.
-
-https://colab.research.google.com/drive/1bFW1oKJjLClVR2tP_cs4-8G_e-Zdvsze#scrollTo=bivAqCA3wOnZ 
-
-### Video Summary
-https://youtu.be/o_t1yP3T0YU
