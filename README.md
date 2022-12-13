@@ -84,3 +84,6 @@ Another limitation of the model was that it seems like it didn’t fully converg
 To use our model, all you need is a PGN string of a chess game. The PGN format is very common, and we’re pretty sure any online chess website has a way to export games as PGN strings. Also, you can create a PGN using various online board editors. We have a demo in the link below, which also includes additional details on how to make a PGN.
 
 https://colab.research.google.com/drive/1bFW1oKJjLClVR2tP_cs4-8G_e-Zdvsze#scrollTo=bivAqCA3wOnZ 
+
+### Video Summary
+https://youtu.be/o_t1yP3T0YU
